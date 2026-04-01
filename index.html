@@ -1,68 +1,296 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="ar" dir="rtl" id="mainHtml">
 <head>
     <meta charset="UTF-8">
-    <title>حاسبة المقذوفات - هندسة ميكانيكية</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>محاكاة المقذوفات - v20.0</title>
     <style>
-        body { font-family: sans-serif; background-color: #f4f4f9; padding: 20px; text-align: center; }
-        .card { background: white; max-width: 400px; margin: auto; padding: 20px; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        input { width: 80%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 5px; }
-        .results { margin-top: 20px; text-align: right; background: #eef2f3; padding: 15px; border-radius: 5px; }
-        h2 { color: #333; }
-        p { margin: 5px 0; font-weight: bold; }
-        span { color: #007bff; }
+        :root { 
+            --p-color: #007bff; --bg: #f8fafc; --card-bg: #ffffff; --txt: #1e293b;
+            --sim-sky: linear-gradient(to bottom, #bae6fd, #e0f2fe);
+            --ground: #22c55e; --rock: #334155; --rock-glow: none; 
+            --particle: rgba(51,65,85,0.6); --stickman: #333; 
+        }
+        .dark-mode { 
+            --bg: #0f172a; --card-bg: #1e293b; --txt: #f8fafc;
+            --sim-sky: linear-gradient(to bottom, #0c4a6e, #082f49);
+            --ground: #166534; --rock: #f1f5f9; 
+            --rock-glow: 0 0 15px #f1f5f9, 0 0 5px #fff; 
+            --particle: rgba(241,245,249,0.8); --stickman: #f1f5f9; 
+        }
+
+        body { font-family: 'Segoe UI', sans-serif; background-color: var(--bg); padding: 10px; text-align: center; margin: 0; transition: 0.4s; color: var(--txt); overflow-x: hidden; }
+        .card { background: var(--card-bg); max-width: 500px; margin: auto; padding: 20px; border-radius: 24px; box-shadow: 0 20px 50px rgba(0,0,0,0.15); position: relative; transition: 0.4s; }
+        
+        .top-bar { position: absolute; top: 15px; left: 15px; display: flex; gap: 8px; z-index: 100; }
+        .btn-toggle { padding: 6px 12px; font-size: 11px; cursor: pointer; border-radius: 10px; border: 1.5px solid var(--p-color); background: var(--card-bg); color: var(--p-color); font-weight: 700; transition: 0.3s; min-width: 70px; }
+        
+        h2 { font-size: 1.3rem; margin: 35px 0 15px; }
+        .inputs-top { display: flex; gap: 10px; justify-content: center; margin-bottom: 10px; }
+        .inputs-top div { flex: 1; }
+        input[type="number"] { width: 90%; padding: 10px; border: 2px solid #e2e8f0; border-radius: 12px; font-size: 16px; text-align: center; background: var(--card-bg); color: var(--txt); font-family: Arial, sans-serif; }
+        
+        .results { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; background: rgba(148, 163, 184, 0.1); padding: 10px; border-radius: 16px; margin: 10px 0; }
+        .res-label { font-size: 10px; font-weight: bold; }
+        .res-val { font-weight: 800; color: var(--p-color); font-family: monospace; font-size: 0.9rem; }
+
+        .simulation-area { height: 260px; background: var(--sim-sky); border-radius: 16px; position: relative; overflow: hidden; border: 2px solid rgba(186, 230, 253, 0.3); transition: 0.5s; }
+        .ground { position: absolute; bottom: 0; width: 100%; height: 25px; background: var(--ground); z-index: 10; border-top: 2px solid rgba(0,0,0,0.1); }
+        
+        .cloud { position: absolute; background: white; border-radius: 50px; opacity: 0.6; filter: blur(2px); animation: moveClouds linear infinite; z-index: 1; }
+        .star { position: absolute; background: white; border-radius: 50%; opacity: 0; transition: 0.5s; z-index: 0; }
+        .dark-mode .star { opacity: 0.8; animation: twinkle 2s infinite ease-in-out; }
+        .particle { position: absolute; background: var(--particle); border-radius: 50%; opacity: 0; pointer-events: none; z-index: 15; }
+        .dust-particle { position: absolute; background: #94a3b8; border-radius: 50%; width: 4px; height: 4px; opacity: 0; z-index: 12; }
+
+        @keyframes moveClouds { from { left: -100px; } to { left: 110%; } }
+        @keyframes twinkle { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+
+        #simSvg { position: absolute; bottom: 15px; left: 5px; width: 180px; height: 160px; z-index: 11; overflow: visible; }
+        #movingParts { transform-origin: 40px 100px; transition: transform 0.1s linear; }
+        .stickman-part { fill: var(--stickman); stroke: var(--stickman); transition: 0.4s; }
+
+        .projectile-rock { width: 14px; height: 14px; background: var(--rock); border-radius: 50%; position: absolute; display: none; z-index: 20; transform: translate(-50%, 50%); box-shadow: var(--rock-glow); }
+        
+        /* منطقة المتحكمات الجديدة مع أزرار + و - */
+        .controls-area { margin-top: 15px; padding: 15px; background: rgba(148, 163, 184, 0.05); border-radius: 16px; display: flex; flex-direction: column; gap: 15px; }
+        .slider-row { display: flex; flex-direction: column; gap: 8px; text-align: right; }
+        .slider-row label { font-size: 12px; font-weight: bold; color: #64748b; }
+        .slider-container { display: flex; align-items: center; gap: 10px; }
+        
+        .btn-step { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--p-color); background: var(--card-bg); color: var(--p-color); font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; -webkit-tap-highlight-color: transparent; }
+        .btn-step:active { background: var(--p-color); color: white; transform: scale(0.9); }
+        
+        input[type="range"] { flex: 1; cursor: pointer; accent-color: var(--p-color); direction: ltr; }
+        
+        .reshoot-btn { background: #e74c3c; color: white; border: none; padding: 12px; border-radius: 12px; font-weight: 700; cursor: pointer; transition: 0.2s; width: 100%; margin-top: 5px; box-shadow: 0 4px 10px rgba(231,76,60,0.2); }
     </style>
 </head>
-<body>
+<body id="bodyTag">
 
 <div class="card">
-    <h2>حاسبة المقذوفات</h2>
+    <div class="top-bar">
+        <button class="btn-toggle" onclick="toggleLang()" id="langBtn">English</button>
+        <button class="btn-toggle" onclick="toggleDarkMode()" id="darkBtn">وضع ليلي</button>
+    </div>
+
+    <h2 id="mainHeading">محاكاة المقذوفات</h2>
     
-    <label>السرعة الابتدائية (v₀) م/ث:</label>
-    <input type="number" id="velocity" placeholder="أدخل السرعة مثل 100" oninput="calculate()">
-    
-    <label>الزاوية (θ) بالدرجات:</label>
-    <input type="number" id="angle" placeholder="أدخل الزاوية" oninput="calculate()">
+    <div class="inputs-top">
+        <div><label style="font-size:10px">v₀ (m/s)</label><br><input type="number" id="v_num" value="100" min="0" max="500" oninput="syncInputs('num_v')"></div>
+        <div><label style="font-size:10px">θ (deg)</label><br><input type="number" id="a_num" value="45" min="0" max="90" oninput="syncInputs('num_a')"></div>
+    </div>
 
     <div class="results">
-        <p>زمن التحليق (tₐ): <span id="ta">-</span> ثانية</p>
-        <p>أقصى ارتفاع (hₘₐₓ): <span id="hmax">-</span> متر</p>
-        <p>أقصى مدى (Rₘₐₓ): <span id="rmax">-</span> متر</p>
+        <div><div class="res-label" id="resTa">t<sub style="font-size:0.6em;">flay</sub></div><div class="res-val" id="ta">-</div></div>
+        <div><div class="res-label" id="resH">h<sub>max</sub> (m)</div><div class="res-val" id="hmax">-</div></div>
+        <div><div class="res-label" id="resR">R<sub>max</sub> (m)</div><div class="res-val" id="rmax">-</div></div>
+    </div>
+
+    <div class="simulation-area" id="simArea">
+        <div class="ground"></div>
+        <svg id="simSvg" viewBox="0 0 200 160">
+            <circle cx="40" cy="80" r="8" class="stickman-part" id="headPart"/> 
+            <path d="M40 88 L40 130" stroke-width="5" class="stickman-part"/> 
+            <path d="M40 130 L25 155 M40 130 L55 155" stroke-width="5" class="stickman-part"/> 
+            <g id="movingParts">
+                <path d="M40 100 L100 100" stroke-width="4" stroke-linecap="round" class="stickman-part"/> 
+                <path d="M40 100 L15 85" stroke-width="4" stroke-linecap="round" class="stickman-part"/> 
+                <path d="M100 135 L100 100 L85 80 M100 100 L115 80" stroke="#8b4513" stroke-width="6" fill="none" stroke-linecap="round"/> 
+                <path id="rubberBand" d="M15 85 L85 80 M15 85 L115 80" stroke="#e74c3c" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+                <circle id="rockInPouch" cx="15" cy="85" r="5" fill="#475569"/>
+            </g>
+        </svg>
+        <div class="projectile-rock" id="projectileRock"></div>
+    </div>
+
+    <div class="controls-area">
+        <div class="slider-row">
+            <label id="lblS">سرعة الانميشن</label>
+            <div class="slider-container">
+                <button class="btn-step" onclick="adjustValue('speedSlider', -50)">-</button>
+                <input type="range" id="speedSlider" min="125" max="1250" step="10" value="687">
+                <button class="btn-step" onclick="adjustValue('speedSlider', 50)">+</button>
+            </div>
+        </div>
+        <div class="slider-row">
+            <label id="lblA_slide">زاوية الرمي (θ)</label>
+            <div class="slider-container">
+                <button class="btn-step" onclick="adjustValue('angleSlider', -5)">-</button>
+                <input type="range" id="angleSlider" min="0" max="90" step="5" value="45" oninput="syncInputs('slide_a')">
+                <button class="btn-step" onclick="adjustValue('angleSlider', 5)">+</button>
+            </div>
+        </div>
+        <div class="slider-row">
+            <label id="lblV_slide">سرعة المقذوف (v₀)</label>
+            <div class="slider-container">
+                <button class="btn-step" onclick="adjustValue('velSlider', -5)">-</button>
+                <input type="range" id="velSlider" min="0" max="500" step="5" value="100" oninput="syncInputs('slide_v')">
+                <button class="btn-step" onclick="adjustValue('velSlider', 5)">+</button>
+            </div>
+        </div>
+        <button class="reshoot-btn" id="btnReshoot" onclick="handleInput()">إعادة الرمي 🚀</button>
     </div>
 </div>
 
 <script>
-function calculate() {
-    // جلب القيم من الخانات
-    const v0 = parseFloat(document.getElementById('velocity').value);
-    const degree = parseFloat(document.getElementById('angle').value);
-    const g = 9.81;
+let currentLang = 'ar';
+let isDark = false;
+let animationId = null;
+let physicsTime = 0, lastTimestamp = 0, particleTimer = 0;
+let hasBounced = false, hasExitedBody = false;
+const g = 9.81;
 
-    if (v0 && degree) {
-        // تحويل الزاوية من درجات إلى راديان لأن JavaScript تتعامل بالراديان
-        const theta = degree * (Math.PI / 180);
+const texts = {
+    ar: { title: "محاكاة المقذوفات", reshoot: "إعادة الرمي 🚀", dark: "وضع ليلي", light: "وضع نهاري", s_lab: "سرعة الانميشن", a_lab: "زاوية الرمي (θ)", v_lab: "سرعة المقذوف (v₀)", btn: "English" },
+    en: { title: "Projectile Simulation", reshoot: "Re-shoot 🚀", dark: "Night Mode", light: "Day Mode", s_lab: "Animation Speed", a_lab: "Launch Angle (θ)", v_lab: "Projectile Velocity (v₀)", btn: "العربية" }
+};
 
-        // 1. حساب زمن التحليق الكلي ta
-        const ta = (2 * v0 * Math.sin(theta)) / g;
-
-        // 2. حساب أقصى ارتفاع hmax
-        const hmax = (Math.pow(v0, 2) * Math.pow(Math.sin(theta), 2)) / (2 * g);
-
-        // 3. حساب المدى الأفقي Rmax
-        const rmax = (Math.pow(v0, 2) * Math.sin(2 * theta)) / g;
-
-        // عرض النتائج وتقريبها لمرتبتين عشريتين
-        document.getElementById('ta').innerText = ta.toFixed(2);
-        document.getElementById('hmax').innerText = hmax.toFixed(2);
-        document.getElementById('rmax').innerText = rmax.toFixed(2);
-    } else {
-        // تصفير النتائج إذا كانت الخانات فارغة
-        document.getElementById('ta').innerText = "-";
-        document.getElementById('hmax').innerText = "-";
-        document.getElementById('rmax').innerText = "-";
+function setupEnvironment() {
+    const sim = document.getElementById('simArea');
+    for(let i=0; i<4; i++) {
+        const cloud = document.createElement('div'); cloud.className = 'cloud';
+        cloud.style.width = (40 + Math.random()*40) + 'px'; cloud.style.top = (20 + Math.random()*60) + 'px';
+        cloud.style.animationDuration = (15 + Math.random()*15) + 's'; sim.appendChild(cloud);
+    }
+    for(let i=0; i<30; i++) {
+        const star = document.createElement('div'); star.className = 'star';
+        star.style.width = (1 + Math.random()*2) + 'px'; star.style.height = star.style.width;
+        star.style.left = Math.random()*95 + '%'; star.style.top = Math.random()*60 + '%'; sim.appendChild(star);
     }
 }
-</script>
+setupEnvironment();
 
+// دالة تعديل القيمة بالأزرار
+function adjustValue(id, amount) {
+    const el = document.getElementById(id);
+    let newVal = parseInt(el.value) + amount;
+    if(newVal < el.min) newVal = el.min;
+    if(newVal > el.max) newVal = el.max;
+    el.value = newVal;
+    
+    if(id === 'angleSlider') syncInputs('slide_a');
+    else if(id === 'velSlider') syncInputs('slide_v');
+    else handleInput(); // لسرعة الانميشن
+}
+
+function syncInputs(type) {
+    const vNum = document.getElementById('v_num'), vSlide = document.getElementById('velSlider');
+    const aNum = document.getElementById('a_num'), aSlide = document.getElementById('angleSlider');
+    if(type === 'num_v') vSlide.value = vNum.value;
+    if(type === 'slide_v') vNum.value = vSlide.value;
+    if(type === 'num_a') aSlide.value = aNum.value;
+    if(type === 'slide_a') aNum.value = aSlide.value;
+    handleInput();
+}
+
+function handleInput() {
+    if (animationId) cancelAnimationFrame(animationId);
+    physicsTime = 0; lastTimestamp = 0; particleTimer = 0; hasBounced = false; hasExitedBody = false;
+    const v0 = parseFloat(document.getElementById('v_num').value);
+    const degree = parseFloat(document.getElementById('a_num').value);
+    if (!isNaN(v0) && !isNaN(degree)) {
+        updateCalculations(v0, degree);
+        if(v0 > 0) animationId = requestAnimationFrame((ts) => { lastTimestamp = ts; animate(ts, v0, degree); });
+    }
+}
+
+function updateCalculations(v0, degree) {
+    const theta = degree * (Math.PI / 180);
+    const t_apex = (v0 * Math.sin(theta)) / g;
+    const h = (Math.pow(v0, 2) * Math.pow(Math.sin(theta), 2)) / (2 * g);
+    const r = (Math.pow(v0, 2) * Math.sin(2 * theta)) / (g * 100);
+    
+    document.getElementById('ta').innerText = t_apex.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1});
+    document.getElementById('hmax').innerText = h.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1});
+    document.getElementById('rmax').innerText = r.toLocaleString('en-US', {minimumFractionDigits: 1, maximumFractionDigits: 1});
+    
+    document.getElementById('movingParts').style.transform = `rotate(${-Math.min(Math.max(degree,0),90)}deg)`;
+}
+
+let vBounceX = 0, vBounceY = 0, bounceStartTime = 0, hitX = 0, hitY = 0;
+
+function animate(timestamp, v0, degree) {
+    const dt = timestamp - lastTimestamp;
+    lastTimestamp = timestamp;
+    const speedBoost = 1 + (v0 / 150);
+    physicsTime += (dt / parseFloat(speedSlider.value)) * speedBoost;
+    
+    const theta = degree * (Math.PI / 180);
+    const visualAngleRad = -Math.min(Math.max(degree, 0), 90) * (Math.PI / 180);
+    const startX = 45 + (-25 * Math.cos(visualAngleRad) - -15 * Math.sin(visualAngleRad)); 
+    const startY = 280 - (175 - (100 + (-25 * Math.sin(visualAngleRad) + -15 * Math.cos(visualAngleRad)))); 
+
+    const rock = document.getElementById('projectileRock');
+    document.getElementById('rockInPouch').style.visibility = 'hidden';
+    rock.style.display = 'block';
+
+    const scale = Math.min(340 / ((v0 * v0) / g || 1), 7); 
+    let t = physicsTime;
+    let currentX, currentY;
+    const ta_total = (2 * v0 * Math.sin(theta)) / g;
+
+    if (!hasBounced) {
+        currentX = startX + (v0 * Math.cos(theta) * t) * scale;
+        currentY = (280 - startY) + (v0 * Math.sin(theta) * t - 0.5 * g * t * t) * scale;
+        if (!hasExitedBody && currentX > 115) { hasExitedBody = true; }
+        if (hasExitedBody && currentX > 25 && currentX < 65 && currentY < 155 && currentY > 30) {
+            hasBounced = true; hitX = currentX; hitY = currentY; bounceStartTime = t;
+            vBounceX = - (v0 * Math.cos(theta)) * 0.4; vBounceY = (v0 * Math.sin(theta) - g * t) * 0.3;
+        }
+    } else {
+        let tAfter = t - bounceStartTime;
+        currentX = hitX + (vBounceX * tAfter) * scale;
+        currentY = hitY + (vBounceY * tAfter - 0.5 * g * tAfter * tAfter) * scale;
+    }
+
+    const groundLevel = 25;
+    if (currentY <= groundLevel || t >= ta_total) {
+        rock.style.left = `${currentX}px`; rock.style.bottom = `${groundLevel}px`;
+        createImpactDust(currentX, groundLevel); document.getElementById('rockInPouch').style.visibility = 'visible';
+        animationId = null; return;
+    }
+
+    rock.style.left = `${currentX}px`; rock.style.bottom = `${currentY}px`;
+    particleTimer += dt;
+    if(particleTimer > 30) { createParticle(currentX, currentY); particleTimer = 0; }
+    animationId = requestAnimationFrame((ts) => animate(ts, v0, degree));
+}
+
+function createParticle(x, y) {
+    const p = document.createElement('div'); p.className = 'particle';
+    p.style.width = (2+Math.random()*3)+'px'; p.style.height = p.style.width;
+    p.style.left = x+'px'; p.style.bottom = y+'px';
+    document.getElementById('simArea').appendChild(p);
+    p.animate([{opacity:1},{opacity:0,transform:'translate(0,5px)'}],300).onfinish=()=>p.remove();
+}
+
+function createImpactDust(x, y) {
+    for(let i=0; i<10; i++) {
+        const d = document.createElement('div'); d.className = 'dust-particle';
+        d.style.left = x + 'px'; d.style.bottom = y + 'px'; document.getElementById('simArea').appendChild(d);
+        const ang = Math.random() * Math.PI; const dist = 15 + Math.random() * 20;
+        d.animate([{opacity:1},{opacity:0,transform:`translate(${Math.cos(ang)*dist}px,-${Math.sin(ang)*dist}px)`}],500).onfinish=()=>d.remove();
+    }
+}
+
+function toggleDarkMode() {
+    isDark = !isDark; document.body.classList.toggle('dark-mode');
+    document.getElementById('darkBtn').innerText = isDark ? texts[currentLang].light : texts[currentLang].dark;
+}
+
+function toggleLang() {
+    currentLang = currentLang === 'ar' ? 'en' : 'ar';
+    document.getElementById('mainHtml').dir = currentLang === 'ar' ? 'rtl' : 'ltr';
+    document.getElementById('mainHeading').innerText = texts[currentLang].title;
+    document.getElementById('lblS').innerText = texts[currentLang].s_lab;
+    document.getElementById('lblA_slide').innerText = texts[currentLang].a_lab;
+    document.getElementById('lblV_slide').innerText = texts[currentLang].v_lab;
+    document.getElementById('btnReshoot').innerText = texts[currentLang].reshoot;
+    document.getElementById('langBtn').innerText = texts[currentLang].btn;
+    document.getElementById('darkBtn').innerText = isDark ? texts[currentLang].light : texts[currentLang].dark;
+}
+handleInput();
+</script>
 </body>
 </html>
